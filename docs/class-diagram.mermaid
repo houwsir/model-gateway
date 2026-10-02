@@ -1,0 +1,228 @@
+classDiagram
+    class Tenant {
+        +int id
+        +str name
+        +str priority_default
+        +int quota_daily
+        +int quota_used_daily
+        +int quota_monthly
+        +int quota_used_monthly
+        +int token_quota_monthly
+        +int token_used_monthly
+        +str status
+    }
+    class ApiKey {
+        +int id
+        +int tenant_id
+        +str key_hash
+        +str key_prefix
+        +str name
+        +str status
+        +str expires_at
+    }
+    class Provider {
+        +int id
+        +str name
+        +str provider_type
+        +str base_url
+        +str api_key_encrypted
+        +str api_key_masked
+        +str status
+        +int quota_total
+        +int quota_used
+        +float success_rate
+        +float cost_weight
+    }
+    class ModelInstance {
+        +int id
+        +int provider_id
+        +str name
+        +str capabilities_json
+        +float input_price
+        +float output_price
+        +str currency
+        +int max_context_tokens
+        +str tier
+        +str status
+        +float latency_p50_ms
+        +float latency_p95_ms
+        +int load
+        +float quality_score
+    }
+    class InstanceNode {
+        +int id
+        +int model_instance_id
+        +str name
+        +int weight
+        +int current_connections
+        +str status
+    }
+    class RoutePolicy {
+        +int id
+        +str name
+        +str scenario_tag
+        +float weight_cost
+        +float weight_latency
+        +float weight_quality
+        +float exploration_rate
+        +bool is_default
+        +str status
+    }
+    class RouteRule {
+        +int id
+        +str name
+        +str rule_type
+        +str condition_json
+        +str action
+        +int priority
+        +bool enabled
+    }
+    class BalancingGroup {
+        +int id
+        +str name
+        +str strategy
+        +str provider_strategy
+        +str config_json
+    }
+    class ResiliencePolicy {
+        +int id
+        +int provider_id
+        +float failure_rate_threshold
+        +int cooldown_seconds
+        +bool half_open_enabled
+        +str failover_mode
+        +str backup_selection
+        +str degrade_mode
+        +str backup_chain_json
+        +int retry_count
+        +str status
+        +int switch_count
+    }
+    class Session {
+        +int id
+        +str session_id
+        +int tenant_id
+        +int message_count
+        +int context_tokens
+        +str status
+        +str last_active_at
+        +int ttl_seconds
+    }
+    class Memory {
+        +int id
+        +int session_id
+        +str role
+        +str content
+        +int tokens
+        +str storage_tier
+        +str expires_at
+    }
+    class RateLimitRule {
+        +int id
+        +str name
+        +str dimension
+        +int threshold
+        +int window_seconds
+        +str algorithm
+        +str action
+        +bool enabled
+    }
+    class PriorityQueue {
+        +int id
+        +str priority
+        +str scenario
+        +int queue_length
+        +int wait_ms
+    }
+    class RequestLog {
+        +int id
+        +str request_id
+        +int tenant_id
+        +str session_id
+        +int provider_id
+        +int model_instance_id
+        +int route_policy_id
+        +str priority
+        +int prompt_tokens
+        +int completion_tokens
+        +int latency_ms
+        +float cost
+        +str status
+        +str error_code
+        +bool is_stream
+    }
+    class Alert {
+        +int id
+        +str severity
+        +str title
+        +str description
+        +str source
+        +str status
+        +str resolved_at
+    }
+    class AuthService {
+        +authenticate(api_key) Tenant
+        +issue_api_key(tenant_id) ApiKey
+        +mask_key(key) str
+    }
+    class TrafficService {
+        +check_rate_limit(tenant, model) bool
+        +check_quota(tenant) bool
+        +enqueue_priority(priority) void
+    }
+    class RouterService {
+        +route(req, ctx) RouteDecision
+        +filter(candidates, rules) list
+        +score(candidates, policy) list
+        +explore(candidates) ModelInstance
+    }
+    class BalancerService {
+        +pick_instance(model) InstanceNode
+        +pick_provider(candidates) Provider
+        +consistent_hash(key, ring) InstanceNode
+    }
+    class ResilienceService {
+        +check_health() void
+        +should_open(model) bool
+        +failover(model) ModelInstance
+        +degrade() ModelInstance
+        +retry(callable, ctx) response
+    }
+    class ModelClient {
+        <<abstract>>
+        +complete(payload) Awaitable
+        +stream(payload) AsyncIterator
+    }
+    class MockModelClient {
+        +complete(payload) Awaitable
+        +stream(payload) AsyncIterator
+    }
+    class MemoryService {
+        +get_context(session_id) list
+        +save(session_id, messages) void
+        +delete(session_id) void
+        +expire_ttl() void
+    }
+    class SafetyService {
+        +filter(content) SafetyResult
+    }
+    class ObservabilityService {
+        +log_request(ctx) void
+        +aggregate_metrics() dict
+        +raise_alert(severity, title, desc, source) void
+    }
+
+    Tenant "1" --> "*" ApiKey
+    Tenant "1" --> "*" Session
+    Provider "1" --> "*" ModelInstance
+    ModelInstance "1" --> "*" InstanceNode
+    RoutePolicy "1" --> "*" RouteRule
+    Session "1" --> "*" Memory
+    Provider "1" --> "*" ResiliencePolicy
+    ModelInstance "1" --> "*" RequestLog
+    ModelClient <|-- MockModelClient
+    RouterService ..> ModelInstance
+    BalancerService ..> InstanceNode
+    ResilienceService ..> ModelClient
+    ObservabilityService ..> RequestLog
+    ObservabilityService ..> Alert

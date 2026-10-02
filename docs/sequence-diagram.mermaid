@@ -1,0 +1,48 @@
+sequenceDiagram
+    participant C as 业务应用(Client)
+    participant R as ChatRouter
+    participant A as AuthService
+    participant T as TrafficService
+    participant RT as RouterService
+    participant LB as BalancerService
+    participant RS as ResilienceService
+    participant MC as ModelClient(mock/real)
+    participant SF as SafetyService
+    participant MM as MemoryService
+    participant OB as ObservabilityService
+
+    C->>R: POST /chat/completions (X-API-Key, X-Request-Id, body)
+    R->>A: authenticate(X-API-Key)
+    alt API Key 无效
+        A-->>R: 401 code 1002
+        R-->>C: {code:1002, message:"未授权"}
+    end
+    R->>T: check_rate_limit + check_quota + enqueue_priority
+    alt 限流/配额耗尽
+        T-->>R: 429/403 code 1004/1003
+        R-->>C: 错误响应
+    end
+    R->>RT: route(request, ctx)
+    RT->>RT: 规则过滤 → 加权打分 → 探索
+    RT-->>R: RouteDecision(候选模型有序列表)
+    R->>LB: pick_instance(model) / pick_provider
+    LB-->>R: 目标 InstanceNode
+    R->>RS: 熔断检查 + 调用(含重试/切换/降级)
+    RS->>MC: complete() or stream()
+    alt 上游失败
+        RS->>RS: 熔断统计 + failover 切换
+        RS->>MC: 重试备用模型
+    end
+    MC-->>RS: 响应/流
+    RS-->>R: 响应
+    R->>SF: filter(输出)
+    alt 内容不合规(EX-11)
+        SF-->>R: 拦截
+        R-->>C: code 1008
+    end
+    R->>MM: save(session_id, messages)
+    R->>OB: log_request + metrics + alert
+    R-->>C: 统一响应 / SSE 流
+
+    Note over RS: 后台周期任务 check_health()
+    Note over RS: 熔断状态机 healthy→open→half_open→healthy/closed
